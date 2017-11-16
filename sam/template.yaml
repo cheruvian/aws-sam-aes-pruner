@@ -1,0 +1,122 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: AWS SAM Template for Lambda that prunes AES clusters.
+Parameters:
+  LambdaFunctionName:
+    Description: The name of the Lambda function.
+    Default: aws-sam-aes-pruner
+    Type: String
+  AESClusterName:
+    Description: The name of the Amazon Elasticsearch Service cluster (Domain).
+    Default: my-cluster
+    Type: String
+Outputs:
+  ClusterEndpoint:
+    Description: URL of your Elasticsearch Cluster
+    Value:
+      Fn::GetAtt:
+        - ElasticsearchCluster
+        - DomainEndpoint
+Resources:
+  AESPruner:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Description: A Lambda function that prunes daily indexes in an Amazon Elasticsearch Cluster.
+      Handler: com.cheruvia.aws.aes.PrunerHandler::handleRequest
+      CodeUri: ../target/aws-sam-aes-pruner-shaded.jar
+      MemorySize: 192
+      Runtime: java8
+      Timeout: 300
+      Role:
+        Fn::GetAtt:
+        - AESPrunerRole
+        - Arn
+      Environment:
+        Variables:
+          CLUSTER_ENDPOINT:
+            Fn::GetAtt:
+              - ElasticsearchCluster
+              - DomainEndpoint
+      Events:
+        Timer:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+  AESPrunerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+            - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  AESPrunerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      Roles:
+        - !Ref AESPrunerRole
+      PolicyName: AESPrunerPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - es:*
+            Resource:
+            - !Join
+              - ''
+              - - Fn::GetAtt:
+                  - ElasticsearchCluster
+                  - DomainArn
+                - '/*'
+  ElasticsearchCluster:
+    Type: AWS::Elasticsearch::Domain
+    Properties:
+      AccessPolicies:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              AWS:
+              - !Join
+                - ''
+                - - 'arn:aws:iam::'
+                  - !Ref 'AWS::AccountId'
+                  - ':root'
+              - Fn::GetAtt:
+                - AESPrunerRole
+                - Arn
+            Action: "es:*"
+            Resource:
+            - !Join
+              - ''
+              - - 'arn:aws:es:'
+                - !Ref 'AWS::Region'
+                - ':'
+                - !Ref 'AWS::AccountId'
+                - ':domain/'
+                - !Ref AESClusterName
+                - '/*'
+      DomainName: !Ref AESClusterName
+      EBSOptions:
+        EBSEnabled: true
+        VolumeSize: 35
+        VolumeType: standard
+      ElasticsearchClusterConfig:
+        DedicatedMasterEnabled: true
+        InstanceCount: 2
+        ZoneAwarenessEnabled: true
+        InstanceType: m3.medium.elasticsearch
+        DedicatedMasterType: m3.medium.elasticsearch
+        DedicatedMasterCount: 3
+      ElasticsearchVersion: 5.5
