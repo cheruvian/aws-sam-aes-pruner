@@ -56,8 +56,6 @@ Resources:
               Service:
                 - lambda.amazonaws.com
         Version: 2012-10-17
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
   AESPrunerPolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -78,6 +76,13 @@ Resources:
                   - ElasticsearchCluster
                   - DomainArn
                 - '/*'
+          -
+            Effect: Allow
+            Action: 
+              -  logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: '*'
   ElasticsearchCluster:
     Type: AWS::Elasticsearch::Domain
     Properties:
